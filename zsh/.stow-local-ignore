@@ -1,0 +1,9 @@
+# etc/ is a reference copy of the system file /etc/zsh/zshenv.
+# It lives outside $HOME, so stow must not try to deploy it.
+^/etc($|/)
+
+# Auto-cloned zsh plugins (see plugins.zsh) — never symlinked, never committed.
+^/\.config/zsh/plugins($|/)
+
+# Don't deploy the ignore file itself.
+\.stow-local-ignore
