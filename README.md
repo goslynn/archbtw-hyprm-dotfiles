@@ -82,11 +82,13 @@ cd ~/.dotfiles && stow -t "$HOME" foo
 | `mako`        | Daemon de notificaciones                           |
 | `fuzzel`      | App launcher (`fuzzel.ini`)                        |
 | `scripts`     | `~/.local/bin/screenshot.sh` — pipeline unificado (grim + slurp + satty) |
+| `shikane`     | Profiles de monitores (hotplug + match por EDID)   |
 | `themes`      | Paleta Catppuccin Mocha (fuente única)             |
 | `kitty`       | Terminal                                           |
 | `nvim`        | Editor                                             |
 | `git`         | Git config                                         |
 | `starship`    | Prompt                                             |
+| `zsh`         | Shell: `.zshrc`, `.zshenv` y módulos (ZDOTDIR en `~/.config/zsh`) |
 | `btop` `mpv`  | Monitor de sistema, reproductor                    |
 | `easyeffects` | Procesador de audio                                |
 | `gtk-3.0` `gtk-4.0` `qt5ct` `qt6ct` `xdg-misc` | Theming/MIME de toolkits |
@@ -149,6 +151,73 @@ Sin daemon — relanza solo cuando lo invocas.
 ### Kitty / Nvim / btop / mpv
 
 Configuraciones tuyas pre-existentes; ya están bajo stow sin modificar.
+
+### Zsh — `~/.config/zsh/`
+
+El `ZDOTDIR` apunta a `~/.config/zsh`, así que zsh lee toda su config desde ahí
+en vez de `~/`. La config está **modularizada**: `.zshrc` carga los módulos con
+`source "$ZDOTDIR/<archivo>"`.
+
+```
+.zshenv          # XDG dirs, EDITOR, MANPAGER, GPG_TTY, PATH (se lee siempre, primero)
+.zshrc           # history, opts, completion, zoxide; orquesta los source de abajo
+fzf.zsh          # FZF_DEFAULT_* + picker Ctrl+F sin ocultos
+aliases.zsh      # eza/bat/rg, git, lf, stream
+bindings.zsh     # cursores y keybinds de zsh-vi-mode (vía zvm_after_init)
+plugins.zsh      # gestor mínimo: clona y carga los plugins
+prompt.zsh       # starship
+plugins/         # clones git auto-instalados — NO versionados (.gitignore)
+```
+
+**Plugins:** `plugins.zsh` clona en `$ZDOTDIR/plugins/` la primera vez que
+arrancas un shell (autosuggestions, history-substring-search, vi-mode,
+fast-syntax-highlighting). Por eso `plugins/` está en `.gitignore`. Actualizar:
+`zplugin-update`.
+
+**Aplicar cambios:** abre una shell nueva, o `exec zsh` / `source ~/.config/zsh/.zshrc`.
+
+> **⚠️ Bootstrap del sistema — paso manual fuera de stow.**
+> Para que zsh use `ZDOTDIR`, hay un archivo **fuera de `$HOME`** que stow no
+> puede gestionar: `/etc/zsh/zshenv`. La copia de referencia vive en
+> `zsh/etc/zsh/zshenv` (no se despliega — está en `.stow-local-ignore`).
+> Al reinstalar en una máquina nueva hay que copiarlo a mano con root:
+>
+> ```bash
+> sudo install -Dm644 ~/.dotfiles/zsh/etc/zsh/zshenv /etc/zsh/zshenv
+> ```
+
+### Shikane — `~/.config/shikane/config.toml`
+
+Daemon de monitores: detecta hotplug, matchea por EDID/serial y aplica el
+profile correcto. Reemplaza por completo la config estática de `monitor=`
+en Hyprland (el `monitor=,preferred,auto,1.33` de `monitors.conf` queda
+solo como fallback si shikane no está corriendo).
+
+**Profiles definidos** (orden = prioridad para match automático):
+
+| Profile           | Cuándo se aplica                        | Layout                                  |
+|-------------------|------------------------------------------|------------------------------------------|
+| `home-mono`       | Laptop + Samsung 4K conectados (auto)    | Solo el 4K, scale 1.8                    |
+| `home-extend`     | Manual: `shikanectl switch home-extend`  | 4K + laptop a la derecha, ambos activos  |
+| `external-hdmi`   | Cualquier HDMI desconocido               | Solo external, scale 1.33                |
+| `external-dp`     | Cualquier DP desconocido                 | Solo external, scale 1.33                |
+| `laptop`          | Sin externos                             | Solo eDP-1, scale 1.33                   |
+
+**Operación:**
+
+- Reload tras editar config: `shikanectl reload`
+- Cambiar de profile manualmente: `shikanectl switch <nombre>`
+- Ver estado: `shikanectl current` / `shikanectl list`
+- Logs: `journalctl --user -fu shikane` (si lo corres como user service)
+  o `pgrep -a shikane`.
+
+**Añadir un nuevo display:**
+
+1. Conéctalo y mira `hyprctl monitors` — copia el `description`
+   (formato `make model serial`).
+2. Añade un `[[profile]]` en `config.toml` con un `[[profile.output]]`
+   por cada display esperado.
+3. `shikanectl reload`.
 
 ---
 
@@ -219,7 +288,7 @@ así que `xdg-open <dir>` desde cualquier app también lo abre.
 | Bind                       | Acción                          |
 |----------------------------|---------------------------------|
 | `SUPER + Q`                | Cerrar ventana activa           |
-| `SUPER + V`                | Toggle floating                 |
+| `SUPER + W`                | Toggle floating                 |
 | `SUPER + SHIFT + F`        | Fullscreen (con barras)         |
 | `SUPER + CTRL + F`         | Fullscreen total                |
 | `SUPER + J`                | Toggle split direction (dwindle)|
@@ -285,6 +354,7 @@ Lanzados por `exec-once` en `hyprland.conf`:
 
 | Proceso                      | Función                              |
 |------------------------------|--------------------------------------|
+| `shikane`                    | Daemon de profiles de monitores      |
 | `waybar`                     | Barra superior                       |
 | `mako`                       | Notificaciones                       |
 | `nm-applet --indicator`      | Tray de NetworkManager               |
@@ -304,5 +374,12 @@ Para relanzar uno manualmente: `pkill <proc> && setsid -f <proc> &`.
 - **Notificaciones no llegan**: `pgrep mako` debe devolver PID. Test: `notify-send hola`.
 - **Pantalla negra al loguear**: Hyprland no encontró ningún `exec-once`. Revisa el
   log en `$XDG_RUNTIME_DIR/hypr/*/Hyprland.log`.
+- **Texto borroso en apps X11 (p. ej. Sioyek)**: con el monitor a scale fraccional
+  (eDP-1 @ 1.33), Hyprland dibuja las apps XWayland a tamaño lógico y las amplía como
+  bitmap → borrosas. Lo resuelve `xwayland { force_zero_scaling = true }` en
+  `~/.config/hypr/conf.d/xwayland.conf` (renderiza a píxel nativo) + las variables
+  `QT_*` que cada app necesita para reescalar su UI. Sioyek las recibe vía el wrapper
+  `~/.local/bin/sioyek` (paquete stow `scripts`). Si añades otra app XWayland que salga
+  diminuta, dale `QT_AUTO_SCREEN_SCALE_FACTOR=1` / `GDK_SCALE` igual que el wrapper.
 - **Backup pre-rice**: `~/dotfiles-backup-20260527-230822.tar.gz` — restaurar con
   `tar -xzf ... -C ~`.
