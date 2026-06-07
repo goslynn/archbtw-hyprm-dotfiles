@@ -3,3 +3,4 @@ CLAUDE.md
 
 # zsh plugins are auto-cloned at shell startup (see zsh/.config/zsh/plugins.zsh)
 zsh/.config/zsh/plugins/
+.TODO
